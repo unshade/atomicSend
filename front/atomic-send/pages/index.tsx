@@ -1,19 +1,18 @@
 import {Inter} from "next/font/google";
 import {useState} from "react";
+import axios from "axios";
 
 const inter = Inter({subsets: ["latin"]});
 
 export default function Home() {
     const [chunkSize, setChunkSize] = useState(20);
 
-    function sendChunk(chunk: Blob, chunkIndex: number, uploadId: string) {
-        const formData = new FormData();
-        formData.append("chunk", chunk);
-        formData.append("chunkIndex", chunkIndex.toString());
-        formData.append("uploadId", uploadId);
-        return fetch("/api/upload-chunk", {
-            method: "POST",
-            body: formData
+    function sendChunk(chunk: Blob, from: number, to: number, total: number, uploadId: string) {
+        return axios.post("http://localhost:8080/api/v1/upload-chunk", chunk, {
+            headers: {
+                "Content-Range": `bytes ${from}-${to} ${total}`,
+                "Upload-Id": uploadId,
+            }
         });
     }
 
@@ -31,47 +30,42 @@ export default function Home() {
 
             // Split file into chunks
             const chunks: Blob[] = [];
+            const startAndEnd: { start: number, end: number }[] = [];
             for (let i = 0; i < chunkCount; i++) {
                 const start = i * chunkSize * 1024 * 1024;
                 const end = Math.min(start + chunkSize * 1024 * 1024, file.size);
                 chunks.push(file.slice(start, end));
+                startAndEnd.push({start, end});
             }
 
             // Request upload with the following parameters: file, chunkCount, chunkSize
-            const response = await fetch("/api/request-upload", {
-                method: "POST",
-                body: JSON.stringify({
-                    file,
-                    chunkCount,
-                    chunkSize
-                })
+            const response = await axios.post("http://localhost:8080/api/v1/request-upload", {
+                file_name: file.name,
+                chunk_count: chunkCount,
+                chunk_size: chunkSize
             });
 
-            const data = await response.json();
-            if (response.ok) {
+            const data = await response.data;
+            if (response.status === 200) {
                 console.log("Upload request succeeded:", data);
             }
 
             while (chunks.length > 0) {
                 // Send remaining chunks
-                const response = sendChunk(chunks[0], chunkCount - chunks.length, data.uploadId);
-                response.then(value => {
-                    if (value.ok) {
-                        chunks.shift();
-                    } else {
-                        console.error("Failed to send chunk:", value);
-                    }
-                });
+                const response = await sendChunk(chunks[0], startAndEnd[0].start, startAndEnd[0].end, file.size, data.uploadId);
+                if (response.status === 200) {
+                    chunks.shift();
+                    startAndEnd.shift();
+                } else {
+                    console.error("Failed to send chunk:", response);
+                }
             }
 
-            const finalizeResponse = await fetch("/api/finalize-upload", {
-                method: "POST",
-                body: JSON.stringify({
-                    uploadId: data.uploadId
-                })
+            const finalizeResponse = await axios.post("http://localhost:8080/api/v1/finalize-upload", {
+                uploadId: data.uploadId
             });
 
-            if (finalizeResponse.ok) {
+            if (finalizeResponse.status === 200) {
                 console.log("Upload finalized:", data.uploadId);
             }
         }
