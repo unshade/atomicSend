@@ -4,17 +4,23 @@ import (
 	"atomicSend/handler"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"net/http"
 	"time"
 )
 
 func main() {
 	engine := gin.Default()
-	/*client := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+	client := redis.NewClient(&redis.Options{
+		Addr:     "redis:6379",
 		Password: "", // no password set
 		DB:       0,  // use default DB
-	})*/
+	})
+
+	engine.Use(func(c *gin.Context) {
+		c.Set("redis", client)
+		c.Next()
+	})
 
 	v1engine := engine.Group("/api/v1")
 	config := cors.Config{

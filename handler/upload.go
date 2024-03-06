@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"io"
 	"net/http"
 	"os"
@@ -24,6 +25,14 @@ func (u UploadController) RequestUpload(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	redisClient := c.MustGet("redis").(*redis.Client)
+	//test connection
+	pong, e := redisClient.Ping(c).Result()
+	fmt.Println(pong, e)
+	fileNameHash := fmt.Sprintf("%x", request.FileName)
+	redisClient.Set(c, fileNameHash, request, 0)
+	val, _ := redisClient.Get(c, fileNameHash).Result()
+	fmt.Println(val)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Request received",
 	})
